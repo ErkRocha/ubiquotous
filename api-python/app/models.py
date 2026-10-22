@@ -10,7 +10,7 @@ COLUNAS = """
     email,
     to_char(birthday, 'YYYY-MM-DD') AS birthday,
     cpf,
-    to_char(inserted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), AS inserted_at,
+    to_char(inserted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS inserted_at,
     to_char(updated_at  AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at
 """
 
@@ -27,12 +27,6 @@ def listar() -> list[dict]:
     with pool.connection() as conn:
         return conn.execute(f"SELECT {COLUNAS} FROM users ORDER BY id").fetchall()
         
-        
-def buscar_por_id(user_id: int) -> dict | None:
-    with pool.connection() as conn:
-        return conn.execute(
-            f"SELECT {COLUNAS} FROM users WHERE id =%s", (user_id,),
-        ).fetchone()
         
 def buscar_por_id(user_id: int) -> dict | None:
     with pool.connection() as conn:

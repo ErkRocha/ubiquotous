@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     CONSTRAINT users_cpf_key   UNIQUE (cpf)
 );
 
-CREATE OR REPLACE FUNCTION set_update_at() RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION set_updated_at() RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = now();
     RETURN NEW;

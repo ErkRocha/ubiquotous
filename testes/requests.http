@@ -1,0 +1,51 @@
+# Extensão REST Client do VS Code.
+# Para testar outra API, troque só a porta:
+# 8001 = Python | 8002 = Node | 8003 = Go | 8004 = Rust
+@baseUrl = http://localhost:8001
+
+### Criar
+POST {{baseUrl}}/users
+Content-Type: application/json
+
+{ "name": "Ana Silva", "email": "ana@exemplo.com", "birthday": "2000-05-15", "cpf": "12345678901" }
+
+### Listar
+GET {{baseUrl}}/users
+
+### Buscar
+GET {{baseUrl}}/users/1
+
+### Substituir
+PUT {{baseUrl}}/users/1
+Content-Type: application/json
+
+{ "name": "Ana Souza", "email": "ana@exemplo.com", "birthday": "2000-05-15", "cpf": "12345678901" }
+
+### Atualizar parcial
+PATCH {{baseUrl}}/users/1
+Content-Type: application/json
+
+{ "name": "Ana S. Souza" }
+
+### Remover
+DELETE {{baseUrl}}/users/1
+
+### --- Erros ---
+
+### 400: campo inválido
+POST {{baseUrl}}/users
+Content-Type: application/json
+
+{ "name": "Ana", "email": "invalido", "birthday": "2000-05-15", "cpf": "12345678901" }
+
+### 400: JSON inválido
+POST {{baseUrl}}/users
+Content-Type: application/json
+
+{ "name":
+
+### 400: id inválido
+GET {{baseUrl}}/users/abc
+
+### 404
+GET {{baseUrl}}/users/999999

@@ -1,0 +1,71 @@
+services:
+  db:
+    build: ./db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: users_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d users_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    volumes:
+      - ./pgadmin/servers.json:/pgadmin4/servers.json
+    depends_on:
+      - db
+
+  api-python:
+    build: ./api-python
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/users_db
+    ports:
+      - "8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api-node:
+    build: ./api-node
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/users_db
+    ports:
+      - "8002:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api-go:
+    build: ./api-go
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/users_db
+    ports:
+      - "8003:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api-rust:
+    build: ./api-rust
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/users_db
+    ports:
+      - "8004:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
