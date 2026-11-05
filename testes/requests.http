@@ -1,7 +1,7 @@
 # Extensão REST Client do VS Code.
-# Para testar outra API, troque só a porta:
-# 8001 = Python | 8002 = Node | 8003 = Go | 8004 = Rust
-@baseUrl = http://localhost:8001
+# 8080 = Gateway (padrão) | 8001 = Python | 8002 = Node | 8003 = Go | 8004 = Rust
+# Para testar uma API direto, troque só a porta.
+@baseUrl = http://localhost:8080
 
 ### Criar
 POST {{baseUrl}}/users
@@ -49,3 +49,25 @@ GET {{baseUrl}}/users/abc
 
 ### 404
 GET {{baseUrl}}/users/999999
+
+### --- Gateway (porta 8080) ---
+
+### Health (o gateway repassa para uma das APIs)
+GET http://localhost:8080/health
+
+### Roteamento por header: força a API Rust (veja X-Upstream na resposta)
+GET http://localhost:8080/users
+X-Backend: api-rust
+
+### Roteamento por path: /rust/users chega na API Rust como /users
+GET http://localhost:8080/rust/users
+
+### Ignora o cache (X-Cache: BYPASS)
+GET http://localhost:8080/users
+Cache-Control: no-cache
+
+### Estado do gateway (upstreams, circuitos, cache, rate limit)
+GET http://localhost:8080/_gateway/status
+
+### Esvazia o cache do gateway
+POST http://localhost:8080/_gateway/cache/flush

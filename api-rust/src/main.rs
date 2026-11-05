@@ -25,6 +25,7 @@ async fn main() {
     drop(pool.get().await.expect("não foi possível conectar no banco"));
 
     let app = Router::new()
+        .route("/health", get(handlers::health))
         .route("/users", get(handlers::listar).post(handlers::criar))
         .route(
             "/users/{id}",

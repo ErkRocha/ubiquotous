@@ -8,6 +8,7 @@
 | API Node | `api-node/` | Express + pg | http://localhost:8002 |
 | API Go | `api-go/` | net/http + pgx | http://localhost:8003 |
 | API Rust | `api-rust/` | axum + tokio-postgres | http://localhost:8004 |
+| API Gateway | `gateway/` | Python + aiohttp | http://localhost:8080 |
 | PostgreSQL | `db/` | Postgres 17 | localhost:5432 |
 | pgAdmin | `pgadmin/` | pgAdmin 4 | http://localhost:5050 |
 
@@ -21,6 +22,7 @@ docker compose up --build
 
 - pgAdmin: http://localhost:5050 (login `admin@admin.com` / `admin`). O servidor "Users DB" já aparece; a senha dele é `postgres`.
 - Swagger da API Python: http://localhost:8001/docs
+- Gateway: http://localhost:8080 (veja a seção "API Gateway" abaixo).
 - Requisições de exemplo: `testes/requests.http` (extensão REST Client do VS Code).
 
 > O `db/init.sql` só roda com o volume vazio. Se mudar o SQL, rode `docker compose down -v`.
@@ -35,6 +37,7 @@ docker compose up --build
 | PUT | `/users/{id}` | todos os campos | **200** usuário | 400, 404, 409 |
 | PATCH | `/users/{id}` | só os campos que mudam | **200** usuário | 400, 404, 409 |
 | DELETE | `/users/{id}` | — | **204** sem corpo | 400, 404 |
+| GET | `/health` | — | **200** `{"status":"ok","database":"up"}` | **503** `{"status":"error","database":"down"}` se o banco estiver fora |
 
 Regras dos campos:
 
@@ -80,3 +83,37 @@ Detalhes que as 4 APIs seguem igual:
 - As datas são formatadas pelo próprio Postgres (`to_char`) no SQL, para sair no mesmo formato em todas.
 - `updated_at` é atualizado por um trigger no banco.
 - O 409 vem da constraint UNIQUE do banco (`users_email_key`, `users_cpf_key`).
+
+## API Gateway
+
+O `gateway/` é um API Gateway didático (Python + aiohttp) na frente das 4 APIs. Os clientes devem falar com **http://localhost:8080**; as portas 8001 a 8004 continuam abertas para testar cada API direto.
+
+```powershell
+curl -i localhost:8080/users
+```
+
+Funcionalidades:
+
+- **Reverse proxy**: repassa a requisição ao upstream e devolve a resposta como veio.
+- **Traffic routing**: escolhe o pool por header (`X-Backend: api-rust`), por path (`/python`, `/node`, `/go`, `/rust`) ou por peso (`/canary`, 90% Go/Rust e 10% Python/Node).
+- **Load balancing** com 6 estratégias (`LB_STRATEGY`): `round_robin`, `sticky_round_robin`, `least_connections`, `least_time`, `ip_hash` e `random_two_choices`.
+- **Circuit breaker**: para de mandar tráfego a um upstream que falha seguidamente.
+- **Health check**: consulta o `GET /health` de cada API a cada poucos segundos.
+- **Rate limit**: token bucket por IP de cliente.
+- **Cache** de `GET` com invalidação em `POST`, `PUT`, `PATCH` e `DELETE`.
+
+Headers que o gateway acrescenta na resposta: `X-Upstream` (qual API atendeu), `X-Cache` (`HIT`/`MISS`/`BYPASS`), `X-Request-Id`, `X-RateLimit-Limit`, `X-RateLimit-Remaining` e `X-Gateway-Route`/`X-Gateway-Pool`/`X-Gateway-Strategy`.
+
+Erros do próprio gateway, no mesmo formato das APIs:
+
+| HTTP | code | message |
+|---|---|---|
+| 404 | `NOT_FOUND` | `Rota não encontrada.` |
+| 429 | `RATE_LIMITED` | `Limite de requisições excedido.` |
+| 502 | `BAD_GATEWAY` | `Nenhum upstream respondeu.` |
+| 503 | `NO_UPSTREAM_AVAILABLE` | `Nenhum upstream disponível.` |
+| 504 | `GATEWAY_TIMEOUT` | `O upstream demorou demais para responder.` |
+
+Endpoints do próprio gateway: `GET /_gateway/health`, `GET /_gateway/status` e `POST /_gateway/cache/flush`.
+
+Para trocar o algoritmo e outros parâmetros: `LB_STRATEGY=ip_hash docker compose up -d gateway` (no PowerShell: `$env:LB_STRATEGY="ip_hash"; docker compose up -d gateway`). Detalhes, variáveis e roteiro de experimentos em [gateway/README.md](gateway/README.md).

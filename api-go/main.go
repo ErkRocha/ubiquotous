@@ -33,6 +33,7 @@ func main() {
 	h := &handlers{models: &models{pool: pool}}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("POST /users", h.criar)
 	mux.HandleFunc("GET /users", h.listar)
 	mux.HandleFunc("GET /users/{id}", h.buscar)

@@ -1,0 +1,120 @@
+# Configuração do gateway.
+#
+# Qualquer valor pode vir de variável de ambiente com a sintaxe "${VAR:-default}"
+# (a substituição é feita no texto, antes de ler o YAML; o config.py converte
+# para número/booleano). Assim dá para trocar, por exemplo, o algoritmo de load
+# balancing sem editar este arquivo:
+#
+#   LB_STRATEGY=least_connections docker compose up -d gateway
+
+server:
+  port: "${PORT:-8080}"
+  # Usa o 1º IP do header X-Forwarded-For como "IP do cliente". Em produção só
+  # se confia nesse header quando ele vem de um proxy conhecido; aqui fica ligado
+  # para a aula: dá para simular clientes diferentes com
+  #   curl -H 'X-Forwarded-For: 10.0.0.7' localhost:8080/users
+  trust_forwarded_for: "${TRUST_FORWARDED_FOR:-true}"
+
+# ---------------------------------------------------------------- upstreams
+# Os servidores "de verdade" que ficam atrás do gateway.
+# simulate_latency_ms: recurso DIDÁTICO (não existe em gateway de produção): o
+# gateway espera esse tempo antes de repassar a requisição, para deixar visível
+# o efeito de least_time e least_connections.
+upstreams:
+  - { name: api-python, url: "${API_PYTHON_URL:-http://api-python:8000}", simulate_latency_ms: "${API_PYTHON_LATENCY_MS:-0}" }
+  - { name: api-node,   url: "${API_NODE_URL:-http://api-node:8000}",     simulate_latency_ms: "${API_NODE_LATENCY_MS:-0}" }
+  - { name: api-go,     url: "${API_GO_URL:-http://api-go:8000}",         simulate_latency_ms: "${API_GO_LATENCY_MS:-0}" }
+  - { name: api-rust,   url: "${API_RUST_URL:-http://api-rust:8000}",     simulate_latency_ms: "${API_RUST_LATENCY_MS:-0}" }
+
+# ---------------------------------------------------------------- pools
+# Um pool é um grupo de upstreams com um algoritmo de load balancing.
+# Estratégias: round_robin, sticky_round_robin, least_connections, least_time,
+#              ip_hash, random_two_choices
+pools:
+  all:
+    strategy: "${LB_STRATEGY:-round_robin}"
+    upstreams: [api-python, api-node, api-go, api-rust]
+  compiled:
+    strategy: "${LB_STRATEGY:-round_robin}"
+    upstreams: [api-go, api-rust]
+  dynamic:
+    strategy: "${LB_STRATEGY:-round_robin}"
+    upstreams: [api-python, api-node]
+  # Um pool por API (com um upstream só, a estratégia não faz diferença).
+  api-python: { upstreams: [api-python] }
+  api-node:   { upstreams: [api-node] }
+  api-go:     { upstreams: [api-go] }
+  api-rust:   { upstreams: [api-rust] }
+
+# ---------------------------------------------------------------- traffic routing
+# As rotas são avaliadas em ordem; vale a PRIMEIRA que casar. Se nenhuma casar,
+# o gateway responde 404 NOT_FOUND "Rota não encontrada." sem falar com nenhum upstream.
+#
+# Critérios (todos opcionais, combinados com E):
+#   path_prefix: "/users" casa /users e /users/1, mas não /usersX (aceita lista)
+#   methods:     [GET, POST]
+#   headers:     { X-Algum-Header: valor }   (valor exato)
+#   headers_present: [X-Algum-Header]       (qualquer valor)
+# Destino:
+#   pool: nome                         -> sempre esse pool
+#   pool_from_header: X-Backend        -> o valor do header é o nome do pool
+#   pools: [{pool: a, weight: 90}, ...] -> divisão ponderada (canary release)
+#   strip_prefix: true                 -> remove o path_prefix antes de repassar
+routes:
+  # Roteamento por header: `curl -H 'X-Backend: api-rust' localhost:8080/users`
+  - name: by-header
+    headers_present: [X-Backend]
+    pool_from_header: X-Backend
+
+  # Roteamento por path: /rust/users -> api-rust recebe /users
+  - { name: python, path_prefix: /python, pool: api-python, strip_prefix: true }
+  - { name: node,   path_prefix: /node,   pool: api-node,   strip_prefix: true }
+  - { name: go,     path_prefix: /go,     pool: api-go,     strip_prefix: true }
+  - { name: rust,   path_prefix: /rust,   pool: api-rust,   strip_prefix: true }
+
+  # Canary release: 90% do tráfego vai para as APIs compiladas (Go, Rust), 10% para as dinâmicas (Python, Node).
+  - name: canary
+    path_prefix: /canary
+    strip_prefix: true
+    pools:
+      - { pool: compiled, weight: "${CANARY_STABLE_WEIGHT:-90}" }
+      - { pool: dynamic,  weight: "${CANARY_WEIGHT:-10}" }
+
+  # Rota padrão: o contrato da API, balanceado entre as 4 APIs.
+  - name: default
+    path_prefix: [/users, /health]
+    pool: all
+
+# ---------------------------------------------------------------- resiliência
+proxy:
+  timeout_seconds: "${PROXY_TIMEOUT_SECONDS:-5}"
+  # Quantas vezes tentar OUTRO upstream quando a conexão falha ou dá timeout.
+  # Só para métodos idempotentes (GET, PUT, DELETE; POST e PATCH nunca).
+  retries: "${PROXY_RETRIES:-1}"
+
+circuit_breaker:
+  # Falhas seguidas (erro de conexão, timeout ou 5xx) para o circuito ABRIR.
+  failure_threshold: "${CB_FAILURE_THRESHOLD:-3}"
+  # Quanto tempo o circuito fica ABERTO antes de deixar uma requisição de teste passar.
+  open_seconds: "${CB_OPEN_SECONDS:-10}"
+
+health_check:
+  enabled: "${HEALTH_CHECK_ENABLED:-true}"
+  path: /health
+  interval_seconds: "${HEALTH_CHECK_INTERVAL_SECONDS:-5}"
+  timeout_seconds: 2
+  unhealthy_threshold: 2   # falhas seguidas para marcar como fora do ar
+  healthy_threshold: 1     # sucessos seguidos para voltar
+
+# ---------------------------------------------------------------- proteção e performance
+rate_limit:
+  enabled: "${RATE_LIMIT_ENABLED:-true}"
+  # Token bucket por cliente: cabe `capacity` fichas (rajada máxima) e entram
+  # `refill_per_second` fichas por segundo (taxa sustentada).
+  capacity: "${RATE_LIMIT_BURST:-200}"
+  refill_per_second: "${RATE_LIMIT_RPS:-100}"
+
+cache:
+  enabled: "${CACHE_ENABLED:-true}"
+  ttl_seconds: "${CACHE_TTL_SECONDS:-5}"
+  max_entries: 1000

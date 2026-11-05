@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 type handlers struct {
@@ -46,6 +48,20 @@ func responderUsuario(w http.ResponseWriter, u *Usuario, err error) {
 	default:
 		responderJSON(w, http.StatusOK, u)
 	}
+}
+
+func (h *handlers) health(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	status, corpo := http.StatusOK, `{"status":"ok","database":"up"}`
+	var um int
+	if err := h.models.pool.QueryRow(ctx, "SELECT 1").Scan(&um); err != nil {
+		status, corpo = http.StatusServiceUnavailable, `{"status":"error","database":"down"}`
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(corpo))
 }
 
 func (h *handlers) criar(w http.ResponseWriter, r *http.Request) {

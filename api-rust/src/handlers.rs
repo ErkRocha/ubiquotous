@@ -6,6 +6,7 @@ use axum::{
     Json,
 };
 use deadpool_postgres::Pool;
+use std::time::Duration;
 
 use crate::{
     errors::ApiError,
@@ -18,6 +19,21 @@ type Resultado = Result<Response, ApiError>;
 fn ou_404(usuario: Option<Usuario>) -> Resultado {
     let usuario = usuario.ok_or_else(ApiError::nao_encontrado)?;
     Ok(Json(usuario).into_response())
+}
+
+pub async fn health(State(pool): State<Pool>) -> Response {
+    let consulta = async {
+        let conn = pool.get().await.ok()?;
+        conn.query_one("SELECT 1", &[]).await.ok()
+    };
+    let (status, corpo) = match tokio::time::timeout(Duration::from_secs(2), consulta).await {
+        Ok(Some(_)) => (StatusCode::OK, r#"{"status":"ok","database":"up"}"#),
+        _ => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            r#"{"status":"error","database":"down"}"#,
+        ),
+    };
+    (status, [(header::CONTENT_TYPE, "application/json")], corpo).into_response()
 }
 
 pub async fn criar(State(pool): State<Pool>, headers: HeaderMap, body: Bytes) -> Resultado {

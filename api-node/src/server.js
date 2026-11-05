@@ -2,6 +2,7 @@ import express from "express";
 
 import { pool } from "./db.js";
 import { errorHandler } from "./errorHandler.js";
+import { router as health } from "./routes/health.js";
 import { router as users } from "./routes/users.js";
 
 const PORT = Number(process.env.PORT ?? 8000);
@@ -14,6 +15,7 @@ app.disable("etag");
 // para devolver o mesmo erro 400 das outras APIs.
 app.use(express.text({ type: () => true, limit: "1mb" }));
 
+app.use(health);
 app.use(users);
 app.use(errorHandler);
 

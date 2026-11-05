@@ -1,3 +1,9 @@
+# Gateway (http://localhost:8080): as variáveis abaixo são repassadas do seu shell
+# para o container (os defaults ficam no gateway/gateway.yaml). Ex.:
+#   LB_STRATEGY=ip_hash docker compose up -d gateway
+# No PowerShell:
+#   $env:LB_STRATEGY="ip_hash"; docker compose up -d gateway
+#
 services:
   db:
     build: ./db
@@ -66,6 +72,36 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  gateway:
+    build: ./gateway
+    environment:
+      - LB_STRATEGY
+      - RATE_LIMIT_ENABLED
+      - RATE_LIMIT_RPS
+      - RATE_LIMIT_BURST
+      - CACHE_ENABLED
+      - CACHE_TTL_SECONDS
+      - CB_FAILURE_THRESHOLD
+      - CB_OPEN_SECONDS
+      - HEALTH_CHECK_ENABLED
+      - HEALTH_CHECK_INTERVAL_SECONDS
+      - PROXY_TIMEOUT_SECONDS
+      - PROXY_RETRIES
+      - CANARY_WEIGHT
+      - CANARY_STABLE_WEIGHT
+      - API_PYTHON_LATENCY_MS
+      - API_NODE_LATENCY_MS
+      - API_GO_LATENCY_MS
+      - API_RUST_LATENCY_MS
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api-python
+      - api-node
+      - api-go
+      - api-rust
+    restart: unless-stopped
 
 volumes:
   db-data:
